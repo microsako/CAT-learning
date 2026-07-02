@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdfinfo 3.pdf)",
+      "Bash(pdfinfo 7.pdf)",
+      "Bash(pdfinfo 8.pdf)",
+      "Bash(pdfinfo 9.pdf)",
+      "Bash(pdfinfo 12.pdf)",
+      "Bash(pdfinfo 14.pdf)",
+      "Bash(pdfinfo 15.pdf)",
+      "Bash(pdfinfo 16.pdf)",
+      "Bash(pdftotext 3.pdf -)",
+      "Bash(pdfinfo selective-mixup-debiasing-cat_7.pdf)",
+      "Bash(pdftotext selective-mixup-debiasing-cat_7.pdf -)",
+      "Bash(python3 -c \"import fitz; print\\('PyMuPDF', fitz.__doc__[:40]\\)\")",
+      "Bash(python3 -c \"import pdfplumber; print\\('pdfplumber ok'\\)\")",
+      "Read(//Users/tangyi/.claude/skills/**)",
+      "Bash(rm -f page*.png)",
+      "Bash(mv fig1-02.png fig1.png)",
+      "Bash(mv fig2-02.png fig2.png)",
+      "Bash(mv fig3-05.png fig3.png)",
+      "Bash(mv table2-07.png table2.png)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "skillOverrides": {
+    "translate-paper": "name-only"
+  }
+}
