@@ -14,6 +14,9 @@ from ..utils.data import AdapTestDataset, TrainDataset, _Dataset
 
 
 class IRT(nn.Module):
+    """IRT(项目反应理论)模型:P(答对) = sigmoid(alpha·theta + beta)
+    theta: 学生能力向量;alpha: 题目区分度向量;beta: 题目难度(标量)
+    """
     def __init__(self, num_students, num_questions, num_dim):
         super().__init__()
         self.num_dim = num_dim
@@ -41,6 +44,7 @@ class IRT(nn.Module):
 
 
 class IRTModel(AbstractModel):
+    """IRT 的训练/更新/评估/EMC 封装,实现 AbstractModel 接口"""
 
     def __init__(self, **config):
         super().__init__()
@@ -53,8 +57,9 @@ class IRTModel(AbstractModel):
 
     def adaptest_init(self, data: _Dataset):
         self.model = IRT(data.num_students, data.num_questions, self.config['num_dim'])
-    
+
     def adaptest_train(self, train_data: TrainDataset):
+        """离线阶段:用历史学生的全部作答记录训练 theta/alpha/beta"""
         lr = self.config['learning_rate']
         bsz = self.config['batch_size']
         epochs = self.config['num_epochs']
@@ -69,7 +74,7 @@ class IRTModel(AbstractModel):
             running_loss = 0.0
             batch_count = 0
             log_batch = 1
-            for student_ids, question_ids, correctness, _ in train_loader:
+            for student_ids, question_ids, correctness in train_loader:
                 optimizer.zero_grad()
                 student_ids = student_ids.to(device)
                 question_ids = question_ids.to(device)
@@ -85,25 +90,24 @@ class IRTModel(AbstractModel):
                     running_loss = 0.0
 
     def adaptest_save(self, path):
+        """只保存题目参数 alpha/beta(theta 是学生参数,测试时要重新估计)"""
         model_dict = self.model.state_dict()
-        model_dict = {k:v for k,v in model_dict.items() if 'alpha' in k or 'beta' in k}
+        model_dict = {k: v for k, v in model_dict.items() if 'alpha' in k or 'beta' in k}
         torch.save(model_dict, path)
 
     def adaptest_preload(self, path):
+        """加载预训练的题目参数;strict=False 允许缺 theta(随机初始化)"""
         self.model.load_state_dict(torch.load(path), strict=False)
         self.model.to(self.config['device'])
 
     def adaptest_update(self, adaptest_data: AdapTestDataset):
-
+        """考试中:用刚作答的题目更新当前考生的 theta(题目参数固定不动)"""
         lr = self.config['learning_rate']
         bsz = self.config['batch_size']
         epochs = self.config['num_epochs']
         device = self.config['device']
+        # 优化器只挂 theta,alpha/beta 不会被更新
         optimizer = torch.optim.Adam(self.model.theta.parameters(), lr=lr)
-
-        # for name, param in self.model.named_parameters():
-        #     if 'theta' not in name:
-        #         param.requires_grad = False
 
         tested_dataset = adaptest_data.get_tested_dataset(last=True)
         dataloader = torch.utils.data.DataLoader(tested_dataset, batch_size=bsz, shuffle=True)
@@ -112,7 +116,7 @@ class IRTModel(AbstractModel):
             running_loss = 0.0
             batch_count = 0
             log_batch = 100
-            for student_ids, question_ids, correctness, _ in dataloader:
+            for student_ids, question_ids, correctness in dataloader:
                 optimizer.zero_grad()
                 student_ids = student_ids.to(device)
                 question_ids = question_ids.to(device)
@@ -127,10 +131,11 @@ class IRTModel(AbstractModel):
                     print('Epoch [{}] Batch [{}]: loss={:.3f}'.format(ep, batch_count, running_loss / log_batch))
                     running_loss = 0.0
 
-        # for name, param in self.model.named_parameters():
-        #     param.requires_grad = True
-    
     def adaptest_evaluate(self, adaptest_data: AdapTestDataset):
+        """评估两个指标:
+        auc —— 用当前 theta 预测该学生全部作答记录的对错,和真实对错算 AUC(能力估计准不准)
+        cov —— 已测题目覆盖的知识点数 / 该学生涉及的全部知识点数(覆盖率)
+        """
         data = adaptest_data.data
         concept_map = adaptest_data.concept_map
         device = self.config['device']
@@ -172,12 +177,16 @@ class IRTModel(AbstractModel):
         }
 
     def expected_model_change(self, sid: int, qid: int, adaptest_data: AdapTestDataset):
-
+        """质量模块(论文式 7-9):候选题的期望模型变化 EMC。
+        分别假设该生"答对"/"答错"这道题,各自训练几步看 theta 挪动多远,
+        再按当前预测的答对概率加权:EMC = p·||Δθ对|| + (1-p)·||Δθ错||
+        """
         epochs = self.config['num_epochs']
         lr = self.config['learning_rate']
         device = self.config['device']
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
 
+        # 冻结题目参数,只允许 theta 动
         for name, param in self.model.named_parameters():
             if 'theta' not in name:
                 param.requires_grad = False
@@ -189,6 +198,7 @@ class IRTModel(AbstractModel):
         correct = torch.LongTensor([1]).to(device).float()
         wrong = torch.LongTensor([0]).to(device).float()
 
+        # 假设答对,训练后看 theta 挪多远
         for ep in range(epochs):
             optimizer.zero_grad()
             pred = self.model(student_id, question_id)
@@ -199,6 +209,7 @@ class IRTModel(AbstractModel):
         pos_weights = self.model.theta.weight.data.clone()
         self.model.theta.weight.data.copy_(original_weights)
 
+        # 假设答错,再来一遍
         for ep in range(epochs):
             optimizer.zero_grad()
             pred = self.model(student_id, question_id)
@@ -209,21 +220,27 @@ class IRTModel(AbstractModel):
         neg_weights = self.model.theta.weight.data.clone()
         self.model.theta.weight.data.copy_(original_weights)
 
+        # 恢复所有参数可训练
         for param in self.model.parameters():
             param.requires_grad = True
 
+        # 按当前预测的答对概率加权两种假设下的变化量
         pred = self.model(student_id, question_id).item()
         return pred * torch.norm(pos_weights - original_weights).item() + \
                (1 - pred) * torch.norm(neg_weights - original_weights).item()
 
     def _loss_function(self, pred, real):
+        """二分类交叉熵;加 0.0001 防止 log(0)"""
         return -(real * torch.log(0.0001 + pred) + (1 - real) * torch.log(1.0001 - pred)).mean()
-    
+
     def get_alpha(self, question_id):
+        """取题目区分度参数(numpy)"""
         return self.model.alpha.weight.data.numpy()[question_id]
-    
+
     def get_beta(self, question_id):
+        """取题目难度参数(numpy)"""
         return self.model.beta.weight.data.numpy()[question_id]
-    
+
     def get_theta(self, student_id):
+        """取学生能力估计(numpy)"""
         return self.model.theta.weight.data.numpy()[student_id]

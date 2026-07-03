@@ -2,11 +2,12 @@ from abc import ABC, abstractmethod
 
 
 class AbstractStrategy(ABC):
+    """选题策略抽象基类:所有策略只需实现 name 和 adaptest_select"""
 
     @property
     @abstractmethod
     def name(self):
-        """ the name of the strategy
+        """策略名称
 
         Returns:
             name: str
@@ -15,13 +16,13 @@ class AbstractStrategy(ABC):
 
     @abstractmethod
     def adaptest_select(self, model, adaptest_data):
-        """
+        """为每个学生从其未测题目中选出下一道题
 
         Args:
-            model: AbstractModel
-            adaptest_data: AdapTestDataset
+            model: AbstractModel,当前认知诊断模型
+            adaptest_data: AdapTestDataset,自适应测试数据(含已测/未测集合)
 
         Returns:
-            selected_questions: dict, {student_idx: question_idx}
+            selected_questions: dict,{学生id: 选中的题目id}
         """
         raise NotImplementedError

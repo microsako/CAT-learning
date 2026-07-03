@@ -4,34 +4,32 @@ from collections import defaultdict
 
 
 class DataPrep(object):
-    """ Data Preprocessor for adaptive testing
-        A collection of static util methods to process datasets
-    """
+    """自适应测试数据预处理器:一组静态工具方法"""
 
     @staticmethod
     def deduplicate_data(data, policy):
-        """
+        """去除重复作答记录(原仓库未实现)
 
         Args:
-            data: pandas DataFrame containing at least 'student_id', 'question_id', 'correct'
-            policy: str in ('keep_first', 'keep_last', 'average')
-        
+            data: pandas DataFrame,至少含 'student_id', 'question_id', 'correct' 三列
+            policy: str,取值 ('keep_first', 'keep_last', 'average')
+
         Returns:
-            deduplicated data: pandas DataFrame
+            去重后的数据: pandas DataFrame
         """
-        # TODO
+        # TODO 原仓库遗留的未实现方法
         raise NotImplementedError
-        
+
     @staticmethod
     def parse_data(data):
-        """ 
+        """把三元组列表整理成按学生/按题目索引的两个嵌套字典
 
         Args:
-            data: list of triplets (sid, qid, score)
-        
+            data: list,[(学生id, 题目id, 得分)]
+
         Returns:
-            student based datasets: defaultdict {sid: {qid: score}}
-            question based datasets: defaultdict {qid: {sid: score}}
+            按学生索引的数据: defaultdict {学生id: {题目id: 得分}}
+            按题目索引的数据: defaultdict {题目id: {学生id: 得分}}
         """
         stu_data = defaultdict(lambda: defaultdict(dict))
         ques_data = defaultdict(lambda: defaultdict(dict))
@@ -39,32 +37,32 @@ class DataPrep(object):
             stu_data[sid][qid] = correct
             ques_data[qid][sid] = correct
         return stu_data, ques_data
-    
+
     @staticmethod
     def prep_data(data, **kwargs):
-        """
+        """数据预处理入口(原仓库未实现)
 
         Args:
-            data: list of triplets (sid, qid, score)
-        
+            data: list,[(学生id, 题目id, 得分)]
+
         Returns:
-            processed datasets: list of triplets (sid, qid, score)
+            处理后的数据: list,[(学生id, 题目id, 得分)]
         """
-        # TODO
+        # TODO 原仓库遗留的未实现方法
         raise NotImplementedError
-    
+
     @staticmethod
     def split_data_by_student(data, test_size=0.2, least_test_length=None):
-        """
+        """按学生划分训练/测试集(测试集学生的记录全部留作模拟考试)
 
         Args:
-            data: list of triplets (sid, qid, score)
-            test_size: float or int, indicating the size of the test datasets
-            least_test_length: int > 0, the least number of questions required
+            data: list,[(学生id, 题目id, 得分)]
+            test_size: float 或 int,测试集大小(比例或人数)
+            least_test_length: int > 0,测试集学生至少要有的作答记录数
 
         Returns:
-            train_data: list of triplets (sid, qid, score)
-            test_data: list of triplets (sid, qid, score)
+            train_data: list,[(学生id, 题目id, 得分)]
+            test_data: list,[(学生id, 题目id, 得分)]
         """
         stu_data, ques_data = DataPrep.parse_data(data)
         n_students = len(stu_data)
@@ -74,6 +72,7 @@ class DataPrep(object):
         assert(train_size > 0 and test_size > 0)
         students = list(range(n_students))
         random.shuffle(students)
+        # 记录太少的学生撑不满一场考试,不能进测试集
         if least_test_length is not None:
             student_lens = defaultdict(int)
             for t in data:
@@ -89,23 +88,23 @@ class DataPrep(object):
 
     @staticmethod
     def save_to_csv(data, path):
-        """
+        """保存三元组到 csv
 
         Args:
-            data: list of triplets (sid, qid, correct)
-            path: str representing saving path
+            data: list,[(学生id, 题目id, 对错)]
+            path: str,保存路径
         """
         pd.DataFrame.from_records(sorted(data), columns=['student_id', 'question_id', 'correct']).to_csv(path, index=False)
 
     @staticmethod
     def renumber_student_id(data):
-        """
+        """把学生 id 重编号为从 0 起的连续整数
 
         Args:
-            data: list of triplets (sid, qid, score)
-        
+            data: list,[(学生id, 题目id, 得分)]
+
         Returns:
-            renumbered datasets: list of triplets (sid, qid, score)
+            重编号后的数据: list,[(学生id, 题目id, 得分)]
         """
         student_ids = sorted(set(t[0] for t in data))
         renumber_map = {sid: i for i, sid in enumerate(student_ids)}
